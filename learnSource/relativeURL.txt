@@ -1,0 +1,2 @@
+https://stackoverflow.com/questions/41293761/how-to-find-window-handle-from-exe-files-name
+https://stackoverflow.com/questions/20521128/can-i-use-member-function-as-first-argument-to-enumwindows
