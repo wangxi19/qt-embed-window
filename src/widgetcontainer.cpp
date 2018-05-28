@@ -1,10 +1,10 @@
 #include "widgetcontainer.h"
 #include <Windows.h>
 #include <QWindow>
-#include <TlHelp32.h>
 #include <string>
 #include <functional>
 #include <iostream>
+#include <fstream>
 #include <QDebug>
 
 WidgetContainer::WidgetContainer(QWidget *parent)
@@ -17,50 +17,39 @@ QWidget *WidgetContainer::createContainer(const QString &iAppName, bool iAutoOpe
 {
     Q_UNUSED(iAutoOpen)
     DWORD procId =(DWORD)findProcessId(iAppName);
-    if (procId == 0) {
+    if (procId == 0 && iAutoOpen) {
+        procId = startUpProcess(iAppName);
+        if (procId == 0) {
+            return nullptr;
+        }
+        Sleep(2000);
+    } else if (procId == 0 && !iAutoOpen) {
         return nullptr;
     }
 
-    HANDLE widWindow = nullptr;
-    HANDLE *pWidWindow = &widWindow;
-    LPARAM curParam;
-    char *pParm = (char*)&curParam;
-    const char *pProcId = (const char*)&procId;
-    const char *pWidWnd = (const char*)&pWidWindow;
-    for (int i = 0; i < 8; ++i) {
-        if (i < 4) {
-            *(pParm + i) = *(pProcId + i);
-        } else {
-            *(pParm + i) = *(pWidWnd + i - 4);
-        }
-    }
+    handle_data data;
+    data.processId = procId;
+    data.wndHandle = nullptr;
 
-    WNDENUMPROC EnumWindowsProc =
-            [] (HWND wnd, LPARAM lParam) ->BOOL
+    EnumWindows([](HWND wnd, LPARAM lParam)->BOOL
     {
-        const char *pParm = (const char *)&lParam;
-        DWORD procId;
-        HANDLE *pWidWindow;
-        char *pProcId = (char*)&procId;
-        char *pWidWnd = (char*)&pWidWindow;
-        for (int i = 0; i < 8; ++i) {
-            if (i < 4) {
-                *(pProcId + i) = *(pParm + i);
-            } else {
-                *(pWidWnd + i - 4) = *(pParm + i);
-            }
-        }
+        handle_data &data = *(handle_data*)lParam;
+        DWORD thProcId = 0;
+        GetWindowThreadProcessId(wnd, &thProcId);
+        //check if it is mainwindow
+        BOOL isMainWnd = GetWindow(wnd, GW_OWNER) == nullptr && IsWindowVisible(wnd);
 
-        DWORD thProcId = GetWindowThreadProcessId(wnd, nullptr);
-        if (thProcId == procId) {
-            *(pWidWindow) = (HANDLE)GetWindow(wnd, 0);
+        if (thProcId == data.processId && isMainWnd) {
+            data.wndHandle = wnd;
+            return -1;
         }
         return 1;
-    };
-
-    EnumWindows(EnumWindowsProc, curParam);
-    HANDLE widWindowAct = FindWindow(L"Notepad++", L"new 1 - Notepad++ [Administrator]");
-    QWindow *foreign = QWindow::fromWinId((WId) widWindowAct);
+    }
+    , (LPARAM)&data);
+    if (nullptr == data.wndHandle) {
+        return nullptr;
+    }
+    QWindow *foreign = QWindow::fromWinId((WId) data.wndHandle);
     if (nullptr != foreign) {
         QWidget *container = QWidget::createWindowContainer(foreign);
         return container;
@@ -68,10 +57,9 @@ QWidget *WidgetContainer::createContainer(const QString &iAppName, bool iAutoOpe
     return nullptr;
 }
 
-unsigned long WidgetContainer::findProcessId(const QString &iAppName)
+DWORD WidgetContainer::findProcessId(const QString &iAppName)
 {
     HANDLE hProcessSnap;
-//    HANDLE hProcess;
     PROCESSENTRY32 pe32;
 
     // Take a snapshot of all processes in the system.
@@ -104,4 +92,63 @@ unsigned long WidgetContainer::findProcessId(const QString &iAppName)
     } while (Process32Next(hProcessSnap, &pe32));
 
     return 0;
+}
+
+DWORD WidgetContainer::startUpProcess(const QString &iAppName)
+{
+    std::wstring filePath = iAppName.toStdWString();
+    std::wifstream ifExists(filePath);
+    bool fileExists = true;
+    if (!ifExists.good()) {
+        fileExists = false;
+        QString path(std::getenv("path"));
+        for (const QString& onePath: path.split(";")) {
+            std::wifstream ifExists(QString(onePath + "/" + iAppName).toStdWString());
+            if (ifExists.good()) {
+                filePath = QString(onePath + "/" + iAppName).toStdWString();
+                fileExists = true;
+                break;
+            }
+        }
+    }
+
+    if (!fileExists) {
+        return 0;
+    }
+
+    // additional information
+    STARTUPINFO si;
+    PROCESS_INFORMATION pi;
+
+    // set the size of the structures
+    ZeroMemory( &si, sizeof(si) );
+    si.cb = sizeof(si);
+    ZeroMemory( &pi, sizeof(pi) );
+
+    // start the program up
+    CreateProcess( filePath.c_str(),   // the path
+        NULL,        // Command line
+        NULL,           // Process handle not inheritable
+        NULL,           // Thread handle not inheritable
+        FALSE,          // Set handle inheritance to FALSE
+        0,              // No creation flags
+        NULL,           // Use parent's environment block
+        NULL,           // Use parent's starting directory
+        &si,            // Pointer to STARTUPINFO structure
+        &pi             // Pointer to PROCESS_INFORMATION structure (removed extra parentheses)
+        );
+    // Close process and thread handles.
+    CloseHandle( pi.hProcess );
+    CloseHandle( pi.hThread );
+    return pi.dwProcessId;
+}
+
+HANDLE WidgetContainer::findWindowHandle(const QString &iClassName, const QString &iWindowName)
+{
+    //L"Notepad++", L"new 1 - Notepad++ [Administrator]"
+#ifdef UNICODE
+    return FindWindow(iClassName.toStdWString().data(), iWindowName.toStdWString().data());
+#else
+    return FindWindow(iClassName.toStdString().data(), iWindowName.toStdString().data());
+#endif
 }

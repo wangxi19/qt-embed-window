@@ -4,7 +4,7 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
-    setCentralWidget(WidgetContainer::createContainer("notepad++.exe"));
+    setCentralWidget(WidgetContainer::createContainer("Code.exe"));
 }
 
 MainWindow::~MainWindow()
