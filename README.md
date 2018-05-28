@@ -25,7 +25,7 @@ https://github.com/wangxi19/qt-embed-window.git
   `windows + (qt5.6+) + lib:luser32 + Microsoft Visual C++ Compiler 14.0 (x86) + UNICODE`
 
 **2. prepare**
-  `配置.exe文件目录的路径到环境变量'path'`
+  `configure .exe file's directory path to 'path'`
 
 **3. do**
     1. specify the program name(string) iAppName
