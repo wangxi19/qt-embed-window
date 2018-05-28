@@ -15,7 +15,6 @@ WidgetContainer::WidgetContainer(QWidget *parent)
 
 QWidget *WidgetContainer::createContainer(const QString &iAppName, bool iAutoOpen)
 {
-    Q_UNUSED(iAutoOpen)
     DWORD procId =(DWORD)findProcessId(iAppName);
     if (procId == 0 && iAutoOpen) {
         procId = startUpProcess(iAppName);
